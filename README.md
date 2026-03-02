@@ -1,4 +1,4 @@
-# AI-RAG-System – Router Agent + RAG Generator + LLM Judge
+# AI-RAG-System – Router Agent + RAG Generator + Reranker + LLM Judge
 
 A complete **Retrieval-Augmented Generation (RAG)** system implementation with intelligent routing, document retrieval, and automated evaluation.
 
@@ -16,20 +16,23 @@ A complete **Retrieval-Augmented Generation (RAG)** system implementation with i
 
 ## Overview
 
-This project implements a production-ready RAG system with three main components:
+This project implements a production-ready RAG system with four main components:
 
 1. **Router Agent** (Gemini) – Intelligently decides whether a query requires RAG retrieval or can be answered directly
 2. **RAG Generator** (Gemini + Qdrant) – Retrieves relevant document chunks and generates context-aware answers
-3. **LLM Judge** (Ollama) – Evaluates answer quality by comparing generated responses to ground-truth answers
+3. **Reranker** (Jina Reranker API) – Re-scores retrieved chunks to prioritize the most relevant ones
+4. **LLM Judge** (Ollama) – Evaluates answer quality by comparing generated responses to ground-truth answers
 
 ### Key Features
 
 - ✅ **Intelligent Routing** – Automatically determines when to use RAG vs. direct LLM responses
 - ✅ **Document Retrieval** – Semantic search over PDF documents using Qdrant vector database
+- ✅ **Reranking Layer** – Optional Jina Reranker (e.g. `jina-reranker-v3`) re-scores the top‑k retrieved chunks and keeps only the best top‑N for the generator
 - ✅ **Automated Evaluation** – LLM-as-judge assessment with accuracy metrics
+- ✅ **Retrieval Accuracy Metrics** – Per-question retrieval precision and correctness exported to `question_retrieval_accuracy.xlsx`
 - ✅ **API Key Rotation** – Handles quota limits with automatic key/model switching
 - ✅ **Checkpoint & Resume** – Saves progress and can resume interrupted evaluations
-- ✅ **Comprehensive Reporting** – CSV statistics and TXT accuracy summaries
+- ✅ **Comprehensive Reporting** – CSV statistics, Excel retrieval analysis, and TXT accuracy summaries
 
 ---
 
@@ -39,14 +42,20 @@ This project implements a production-ready RAG system with three main components
 User Query
     ↓
 Router Agent (Gemini)
-    ├─→ Decision: "rag" → RAG Generator (Gemini + Qdrant)
+    ├─→ Decision: "rag"
+    │       ↓
+    │   Retriever (Qdrant, top‑k)
+    │       ↓
+    │   Reranker (Jina Reranker API, re-score → top‑N)
+    │       ↓
+    │   RAG Generator (Gemini + contexts)
     └─→ Decision: "direct" → Direct LLM (Gemini)
-    ↓
-Generated Answer
-    ↓
-LLM Judge (Ollama) ← Ground Truth Answer
-    ↓
-Evaluation Results (Accuracy, Confidence, Explanation)
+            ↓
+        Generated Answer
+            ↓
+        LLM Judge (Ollama) ← Ground Truth Answer
+            ↓
+        Evaluation Results (Accuracy, Confidence, Explanation, Retrieval Metrics)
 ```
 
 ### Component Details
@@ -57,8 +66,15 @@ Evaluation Results (Accuracy, Confidence, Explanation)
 
 - **RAG Generator** (`services/rag_generator.py`)
   - Embeds queries using Ollama (`nomic-embed-text`)
-  - Retrieves top-k relevant chunks from Qdrant
-  - Generates answers using Gemini with retrieved contexts
+  - Retrieves top‑k relevant chunks from Qdrant (e.g. top‑20)
+  - Optionally calls **Jina Reranker** to re-rank and keep only the best top‑N chunks (e.g. top‑5)
+  - Generates answers using Gemini with reranked contexts
+
+- **Reranker** (`services/reranker.py`, used in `rag_generator.py` and `evaluate_ollama_with_reranker.py`)
+  - Thin client around [Jina Reranker API](https://jina.ai/reranker/)
+  - Default model: `jina-reranker-v3`
+  - Input: user query + list of candidate chunks from Qdrant
+  - Output: the same list of chunks with an extra `rerank_score`, sorted by relevance
 
 - **LLM Judge** (`services/llm_judge.py`)
   - Uses Ollama (e.g., `llama3.1:8b-instruct`) for semantic comparison
@@ -80,6 +96,7 @@ Evaluation Results (Accuracy, Confidence, Explanation)
   docker run -p 6333:6333 -v qdrant_data:/qdrant/storage qdrant/qdrant
   ```
 - **Google Gemini API Key**: Free tier supports 20 requests/day per model
+- **Jina Reranker API Key** (optional, recommended for best retrieval accuracy)
 
 ---
 
@@ -88,7 +105,7 @@ Evaluation Results (Accuracy, Confidence, Explanation)
 1. **Clone the repository**:
    ```bash
    git clone <your-repo-url>
-   cd AI-RAG-System
+   cd RAG_Tutorial
    ```
 
 2. **Create virtual environment**:
@@ -112,6 +129,8 @@ Evaluation Results (Accuracy, Confidence, Explanation)
    GEMINI_API_KEY=your_main_api_key_here
    PDF_DOCUMENTS=pdf_documents
    GEMINI_MODEL_NAME=gemini-2.5-flash-lite
+   # Jina Reranker (used in online RAG + offline evaluation)
+   JINA_API_KEY=your_jina_reranker_key_here
    
    # Multiple API keys for evaluation (optional)
    GEMINI_API_KEY_1=your_key_1
@@ -147,11 +166,25 @@ Type your questions and get answers with automatic RAG routing!
 
 ### 3. Evaluate on Question-Answer Pairs
 
-**With Ollama (local, no quota limits)**:
+**With Ollama (local, no quota limits) – baseline (without reranker)**:
 ```bash
 cd services
 python evaluate_ollama.py
 ```
+
+**With reranker + Ollama judge (local)**:
+```bash
+cd services
+python evaluate_ollama_with_reranker.py
+```
+
+This evaluation uses:
+- Qdrant retrieval (e.g. top‑20),
+- Jina Reranker (e.g. top‑5 for the generator),
+- Ollama as judge,
+and writes:
+- text summary with answer accuracy + retrieval metrics
+- per‑question retrieval analysis into `results/question_retrieval_accuracy.xlsx`.
 
 **With Gemini (requires API keys)**:
 ```bash
@@ -230,7 +263,9 @@ All results are saved in `services/results/` directory.
 **Model**: Local Ollama (llama3.1:8b-instruct-q4_0)  
 **Dataset**: 60 question-answer pairs from `RAG Documents.xlsx`
 
-**Results**:
+**Baseline (WITHOUT reranker, local RAG + Ollama judge)**  
+Chunking: `chunk_size=1000`, `overlap=200`
+
 ```
 Right answer: 43/60, accuracy: 72%
 ```
@@ -238,6 +273,40 @@ Right answer: 43/60, accuracy: 72%
 - **Correct Answers**: 43 out of 60
 - **Accuracy**: 72%
 - **Evaluation Method**: LLM-as-judge (Ollama) semantic comparison
+
+---
+
+#### Effect of Jina Reranker on Answer Accuracy
+
+All evaluations below use:
+- Retriever: Qdrant
+- Reranker: Jina Reranker API (`jina-reranker-v3`)
+- Judge: Ollama (LLM-as-judge)
+
+**WITH RERANKER**
+
+- **chunk size 1000, overlap 200**
+
+  ```
+  Right answer: 44/60, accuracy: 73%
+  ```
+
+- **chunk size 512, overlap 100**
+
+  ```
+  Right answer: 41/60, accuracy: 68%
+  ```
+
+- **chunk size 1500, overlap 300**
+
+  ```
+  Right answer: 53/60, accuracy: 88%
+  ```
+
+Summary:
+- Adding the reranker on top of the original chunking (1000 / 200) gives a small accuracy gain (72% → 73%).
+- The best configuration so far is **larger chunks with moderate overlap (1500 / 300)**, which significantly improves answer accuracy to **88% (53/60)**.
+- These experiments are backed by per-question retrieval precision exported to `question_retrieval_accuracy.xlsx`.
 
 #### Gemini Model Performance
 
@@ -318,7 +387,7 @@ Right answer: 29/47, accuracy: 62%
 ## Project Structure
 
 ```
-AI-RAG-System/
+RAG_Tutorial/
 ├── services/
 │   ├── main.py                 # Interactive chat with RAG system
 │   ├── evaluate_ollama.py      # Ollama-based evaluation (60 Q&A pairs)

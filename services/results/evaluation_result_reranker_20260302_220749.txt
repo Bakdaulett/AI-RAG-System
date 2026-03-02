@@ -1,0 +1,4 @@
+Chunking config: chunk_size=1500, chunk_overlap=300
+Right answer (with reranker): 53/60, accuracy: 88%
+Retrieval correct (any chunk from true PDF in final top-5): 37/60, accuracy: 62%
+Average retrieval precision over final top-5: 0.41
