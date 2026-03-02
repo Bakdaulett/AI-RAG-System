@@ -116,7 +116,9 @@ class QdrantPopulator:
                     "source": pdf_path.name,
                     "chunk_index": i,
                     "total_chunks": len(chunks),
-                    "chunk_size": len(chunk)
+                    "chunk_size": len(chunk),
+                    "config_chunk_size": self.chunk_size,
+                    "config_chunk_overlap": self.chunk_overlap,
                 }
                 for i, chunk in enumerate(chunks)
             ]
@@ -296,7 +298,7 @@ def main():
         data_folder=DATA_FOLDER,
         collection_name=COLLECTION_NAME,
         chunk_size=CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP
+        chunk_overlap=CHUNK_OVERLAP,
     )
 
     # Menu
@@ -309,11 +311,12 @@ def main():
     print("3. Test search with sample queries")
     print("4. Interactive search mode")
     print("5. Show collection info")
-    print("6. Exit")
+    print("6. Change chunking parameters")
+    print("7. Exit")
 
     while True:
         try:
-            choice = input("\nEnter your choice (1-6): ").strip()
+            choice = input("\nEnter your choice (1-7): ").strip()
 
             if choice == "1":
                 populator.populate(verbose=False, recreate_collection=False)
@@ -351,6 +354,28 @@ def main():
                     print(f"\nCollection '{COLLECTION_NAME}' does not exist")
 
             elif choice == "6":
+                # Update chunking configuration for experimentation
+                try:
+                    new_size = input(
+                        f"Enter new chunk size (current {populator.chunk_size}, press Enter to keep): "
+                    ).strip()
+                    if new_size:
+                        populator.chunk_size = int(new_size)
+
+                    new_overlap = input(
+                        f"Enter new chunk overlap (current {populator.chunk_overlap}, press Enter to keep): "
+                    ).strip()
+                    if new_overlap:
+                        populator.chunk_overlap = int(new_overlap)
+
+                    print(
+                        f"Updated chunking config: size={populator.chunk_size}, "
+                        f"overlap={populator.chunk_overlap}"
+                    )
+                except ValueError:
+                    print("Invalid number. Chunking parameters not changed.")
+
+            elif choice == "7":
                 print("\nExiting...")
                 break
 

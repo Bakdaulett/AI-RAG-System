@@ -11,6 +11,7 @@ from pydantic_ai.providers.google import GoogleProvider
 from router_agent import RouterAgent
 from rag_generator import RAGGenerator
 from llm_judge import LLMJudge
+from reranker import JinaReranker
 from dotenv import load_dotenv
 
 
@@ -53,15 +54,24 @@ class RAGSystem:
         print("\n[2/4] Setting up Router Agent...")
         self.router = RouterAgent(self.model)
 
+        # Initialize Jina Reranker (optional)
+        print("\n[3/5] Setting up Jina Reranker (if API key provided)...")
+        self.reranker = JinaReranker()
+        if self.reranker.api_key:
+            print(f"Jina Reranker enabled with model '{self.reranker.model}'.")
+        else:
+            print("Jina Reranker disabled (JINA_API_KEY not set); using raw Qdrant scores.")
+
         # Initialize RAG Generator
-        print("\n[3/4] Setting up RAG Generator...")
+        print("\n[4/5] Setting up RAG Generator...")
         self.rag_generator = RAGGenerator(
             model=self.model,
-            collection_name=collection_name
+            collection_name=collection_name,
+            reranker=self.reranker if self.reranker.api_key else None,
         )
 
         # Initialize LLM Judge (Ollama-based, separate from Gemini)
-        print("\n[4/4] Setting up LLM Judge (Ollama)...")
+        print("\n[5/5] Setting up LLM Judge (Ollama)...")
         self.judge = LLMJudge()
 
         # Results tracking
@@ -330,6 +340,9 @@ class RAGSystem:
         with open(summary_file, "w", encoding="utf-8") as f:
             f.write(f"Right answer: {correct}/{total_judged}, accuracy: {accuracy:.0f}%")
 
+        print(
+            f"Right answer: {correct}/{total_judged}, accuracy: {accuracy:.0f}%"
+        )
         print(f"Simple text summary saved to: {summary_file}")
 
 def main():

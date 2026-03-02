@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 import sys
 
 sys.path.append("uploads")
@@ -6,7 +6,7 @@ sys.path.append("uploads")
 from embedding_manager import Embedder
 from qdrant_manager import QdrantManager
 from pydantic_ai import Agent
-from reranker import QwenReranker
+from reranker import JinaReranker
 
 
 class RAGGenerator:
@@ -22,9 +22,9 @@ class RAGGenerator:
             model,
             collection_name: str = "pdf_documents",
             embedding_model: str = "nomic-embed-text",
-            top_k: int = 5,
+            top_k: int = 20,
             score_threshold: float = 0.5,
-            use_reranker: bool = True,
+            reranker: Optional[JinaReranker] = None,
     ):
         """
         Initialize RAG Generator.
@@ -39,9 +39,12 @@ class RAGGenerator:
         self.model = model
         self.agent = Agent(model=model)
         self.collection_name = collection_name
+        # top_k: how many to retrieve from Qdrant before reranking (e.g. 20)
         self.top_k = top_k
         self.score_threshold = score_threshold
-        self.use_reranker = use_reranker
+        self.reranker = reranker
+        # final_top_k: how many top reranked chunks to pass to the generator (e.g. 5)
+        self.final_top_k = 5
 
         # Initialize embedder, Qdrant manager and reranker
         self.embedder = Embedder(model_name=embedding_model)
@@ -98,29 +101,24 @@ class RAGGenerator:
             traceback.print_exc()
             results = []
 
-        # Optional: Rerank contexts using Ollama cross-encoder
-        if self.use_reranker and results:
-            print("\nReranking contexts with Qwen3-Reranker (Ollama)...")
+        # Optional step 3: rerank with Jina Reranker if available
+        if self.reranker:
+            print(f"Reranking {len(results)} contexts with Jina Reranker model '{self.reranker.model}'...")
             results = self.reranker.rerank(query, results)
 
-        # Step 3: Extract text contexts after (re)ranking
-        contexts = [result["text"] for result in results]
+        # Take only top-N after reranking for generation
+        top_results = results[: self.final_top_k]
+        contexts = [result['text'] for result in top_results]
 
-        print(f"Retrieved {len(contexts)} contexts (after reranking)")
-        for i, result in enumerate(results, 1):
-            base_score = result.get("score", 0.0)
-            rerank_score = result.get("rerank_score")
-            if rerank_score is not None:
-                print(
-                    f"  Context {i}: qdrant_score={base_score:.3f}, "
-                    f"rerank_score={rerank_score:.3f}, "
-                    f"source={result['metadata'].get('source', 'unknown')}"
-                )
-            else:
-                print(
-                    f"  Context {i}: score={base_score:.3f}, "
-                    f"source={result['metadata'].get('source', 'unknown')}"
-                )
+        print(f"Retrieved {len(contexts)} contexts")
+        for i, result in enumerate(top_results, 1):
+            base_score = result.get('score', 0.0)
+            rerank_score = result.get('rerank_score', 0.0)
+            print(
+                f"  Context {i}: qdrant_score={base_score:.3f}, "
+                f"rerank_score={rerank_score:.3f}, "
+                f"source={result['metadata'].get('source', 'unknown')}"
+            )
 
         return contexts
 
