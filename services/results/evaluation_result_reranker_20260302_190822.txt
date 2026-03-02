@@ -1,0 +1,2 @@
+Right answer (with reranker): 44/60, accuracy: 73%
+Retrieval correct (any chunk from true PDF in final top-3): 34/60, accuracy: 57%

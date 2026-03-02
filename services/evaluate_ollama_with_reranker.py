@@ -63,7 +63,7 @@ class LocalRAGEvaluatorWithReranker:
         self,
         collection_name: str = "pdf_documents",
         embedding_model: str = "nomic-embed-text",
-        top_k: int = 10,
+        top_k: int = 20,
         score_threshold: float = 0.5,
         generation_model: str = "llama3.1:8b-instruct-q4_0",
         judge_model: str = "llama3.1:8b-instruct-q4_0",
@@ -74,7 +74,7 @@ class LocalRAGEvaluatorWithReranker:
         # top_k: how many to retrieve from Qdrant before reranking (e.g. 20)
         self.top_k = top_k
         # final_top_k: how many top reranked chunks to pass to the generator (e.g. 5)
-        self.final_top_k = 3
+        self.final_top_k = 5
         self.score_threshold = score_threshold
         self.generation_model = generation_model
 
@@ -310,17 +310,28 @@ class LocalRAGEvaluatorWithReranker:
 
         rows = []
         for r in self.results:
+            retrieval_correct = r.get("retrieval_correct")
+            answer_correct = (
+                r.get("judgment", {}).get("judgment") if r.get("judgment") else None
+            )
+
+            # Normalize booleans to explicit English strings for Excel
+            def bool_to_str(val):
+                if val is True:
+                    return "True"
+                if val is False:
+                    return "False"
+                return ""
+
             rows.append(
                 {
                     "timestamp": r.get("timestamp"),
                     "question": r.get("query"),
                     "ground_truth_source": r.get("retrieval_ground_truth_source"),
                     "retrieved_sources": ", ".join(r.get("retrieved_sources") or []),
-                    "retrieval_correct": r.get("retrieval_correct"),
+                    "retrieval_correct": bool_to_str(retrieval_correct),
                     "retrieval_precision": r.get("retrieval_precision"),
-                    "answer_correct": r.get("judgment", {}).get("judgment")
-                    if r.get("judgment")
-                    else None,
+                    "answer_correct": bool_to_str(answer_correct),
                     "answer_confidence": r.get("judgment", {}).get("confidence")
                     if r.get("judgment")
                     else None,
