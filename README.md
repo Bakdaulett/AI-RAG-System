@@ -186,14 +186,6 @@ and writes:
 - text summary with answer accuracy + retrieval metrics
 - per‑question retrieval analysis into `results/question_retrieval_accuracy.xlsx`.
 
-**With Gemini (requires API keys)**:
-```bash
-cd services
-python evaluate_gemini.py
-```
-
----
-
 ## Usage
 
 ### Interactive Chat (`main.py`)
@@ -226,30 +218,6 @@ python services/evaluate_ollama.py
 - Loads questions from `RAG Documents.xlsx` (columns C & D)
 - Uses Ollama for generation + judge (no Gemini)
 - Saves TXT summary: `Right answer: X/60, accuracy: Y%`
-
-### Gemini Evaluation (`evaluate_gemini.py`)
-
-Evaluates using **Gemini** with API key rotation:
-
-```bash
-python services/evaluate_gemini.py
-```
-
-**Features**:
-- Rotates through multiple API keys/models when quota hit
-- Saves checkpoint after each question
-- Can resume from last processed question
-- Saves intermediate results per API key/model
-
-**Configuration** (in `.env`):
-```env
-GEMINI_API_KEY_1=key1
-GEMINI_MODELS_1=gemini-2.5-flash-lite,gemini-2.5-flash
-GEMINI_API_KEY_2=key2
-GEMINI_MODELS_2=gemini-2.5-pro
-```
-
----
 
 ## Results & Accuracy Reporting
 
@@ -308,45 +276,14 @@ Summary:
 - The best configuration so far is **larger chunks with moderate overlap (1500 / 300)**, which significantly improves answer accuracy to **88% (53/60)**.
 - These experiments are backed by per-question retrieval precision exported to `question_retrieval_accuracy.xlsx`.
 
-#### Gemini Model Performance
-
-**Evaluation Date**: February 13, 2026  
-**Model**: Google Gemini (gemini-2.5-flash-lite / gemini-2.5-flash)  
-**Dataset**: 47 question-answer pairs processed (out of 60 total)
-
-**Results**:
-```
-Right answer: 29/47, accuracy: 62%
-```
-
-- **Correct Answers**: 29 out of 47 processed
-- **Accuracy**: 62%
-- **Evaluation Method**: LLM-as-judge (Ollama) semantic comparison
-- **Note**: Evaluation stopped at question 47 due to API quota limits
-
-#### Model Comparison Summary
-
-| Model | Correct | Total | Accuracy | Notes |
-|-------|---------|-------|----------|-------|
-| **Ollama** (llama3.1:8b-instruct) | 43 | 60 | **72%** | Complete evaluation, no API limits |
-| **Gemini** (2.5-flash-lite/flash) | 29 | 47 | **62%** | Partial evaluation due to quota |
-
-**Key Observations**:
-- Ollama achieved **72% accuracy** on the full 60-question dataset
-- Gemini achieved **62% accuracy** on 47 questions (78% of dataset)
-- Both models use the same LLM-as-judge (Ollama) for evaluation consistency
-- Ollama evaluation completed without quota constraints
-- Gemini evaluation demonstrates API key rotation capability but requires multiple keys for full dataset
-
 ### Output Files
 
 #### 1. **Accuracy Summary** (TXT)
-- **File**: `evaluation_result_YYYYMMDD_HHMMSS.txt` (Ollama) or `gemini_evaluation_final_YYYYMMDD_HHMMSS.txt` (Gemini)
+- **File**: `evaluation_result_YYYYMMDD_HHMMSS.txt`
 - **Format**: `Right answer: X/Y, accuracy: Z%`
 - **Examples**:
   ```
-  Right answer: 43/60, accuracy: 72%  # Ollama evaluation
-  Right answer: 29/47, accuracy: 62%   # Gemini evaluation
+  Right answer: 43/60, accuracy: 72%
   ```
 
 #### 2. **Statistics CSV**
@@ -371,43 +308,31 @@ Right answer: 29/47, accuracy: 62%
   - Judge explanation
   - Elapsed time
 
-#### 4. **Checkpoint File** (JSON)
-- **File**: `gemini_eval_checkpoint.json`
-- **Purpose**: Allows resuming interrupted evaluations
-- **Contains**: Last processed index + all accumulated results
-
-#### 5. **Intermediate Results** (CSV)
-- **Files**: `gemini_results_api1_MODEL_TIMESTAMP.csv`
-- **Purpose**: Results saved when switching API keys/models
-- **Useful**: For tracking progress across multiple runs
-
----
-
-
 ## Project Structure
 
 ```
-RAG_Tutorial/
+AI-RAG-System/
 ├── services/
 │   ├── main.py                 # Interactive chat with RAG system
 │   ├── evaluate_ollama.py      # Ollama-based evaluation (60 Q&A pairs)
-│   ├── evaluate_gemini.py      # Gemini-based evaluation with key rotation
 │   ├── router_agent.py         # Gemini router (RAG vs Direct)
-│   ├── rag_generator.py        # RAG pipeline (Gemini + Qdrant)
+│   ├── rag_generator.py        # RAG pipeline (Gemini + Qdrant + reranker)
+│   ├── reranker.py             # Jina Reranker client
 │   ├── llm_judge.py            # Ollama-based judge
 │   ├── embedding_manager.py    # Ollama embeddings
 │   ├── qdrant_manager.py       # Qdrant operations
-│   ├── preprocessing.py         # PDF chunking
-│   ├── populate_qdrant.py      # Populate vector DB
+│   ├── preprocessing.py        # PDF chunking
+│   ├── populate_qdrant.py      # Populate vector DB + chunking experiments
 │   └── results/                # Output directory
 │       ├── *.csv               # Statistics & detailed results
 │       ├── *.txt               # Accuracy summaries
+│       ├── question_retrieval_accuracy.xlsx  # Retrieval metrics per question
 │       └── *.json              # Checkpoints
-├── data/                       # PDF documents directory
+├── data/                       # PDF documents
 ├── qdrant_data/                # Qdrant storage
 ├── .env                        # Environment variables (API keys)
-├── RAG Documents.xlsx          # Question-answer pairs (60 rows)
-└── README.md                   # This file
+├── RAG Documents.xlsx          # Question-answer pairs (with source PDF column)
+└── README.md
 ```
 
 ## Acknowledgments
