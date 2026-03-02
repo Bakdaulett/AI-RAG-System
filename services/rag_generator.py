@@ -1,7 +1,7 @@
 from typing import List, Optional
 import sys
 
-sys.path.append('/mnt/user-data/uploads')
+sys.path.append("uploads")
 
 from embedding_manager import Embedder
 from qdrant_manager import QdrantManager
@@ -46,9 +46,10 @@ class RAGGenerator:
         # final_top_k: how many top reranked chunks to pass to the generator (e.g. 5)
         self.final_top_k = 5
 
-        # Initialize embedder and Qdrant manager
+        # Initialize embedder, Qdrant manager and reranker
         self.embedder = Embedder(model_name=embedding_model)
         self.qdrant_manager = QdrantManager()
+        self.reranker = QwenReranker()
 
         print(f"RAG Generator initialized with collection: {collection_name}")
 
